@@ -2240,11 +2240,6 @@ int smblib_set_prop_batt_status(struct smb_charger *chg,
 	return 0;
 }
 
-extern union power_supply_propval lct_therm_lvl_reserved;
-extern bool lct_backlight_off;
-extern int LctIsInCall;
-extern int LctThermal;
-
 int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 				const union power_supply_propval *val)
 {
@@ -2257,31 +2252,7 @@ int smblib_set_prop_system_temp_level(struct smb_charger *chg,
 	if (val->intval > chg->thermal_levels)
 		return -EINVAL;
 
-	pr_info("%s val=%d, chg->system_temp_level=%d, LctThermal=%d, lct_backlight_off= %d, IsInCall=%d \n " 
-		,__FUNCTION__,val->intval,chg->system_temp_level, LctThermal, lct_backlight_off, LctIsInCall);
-
-	if (LctThermal == 0) { //from therml-engine always store lvl_sel
-		lct_therm_lvl_reserved.intval = val->intval;
-	}
-
-	/*backlight off and not-incall, force minimum level 3*/
-	if ((lct_backlight_off) && (LctIsInCall == 0) && (val->intval > 3)) {
-		pr_info("leve ignored:backlight_off:%d level:%d",lct_backlight_off,val->intval);
-		return 0;
-	}
-
-	/*incall,force level 5*/
-	if ((LctIsInCall == 1) && (val->intval != 5)) {
-		pr_info("leve ignored:LctIsInCall:%d level:%d",LctIsInCall,val->intval);
-		return 0;
-	}
-
-	if (val->intval == chg->system_temp_level)
-		return 0;
-
 	chg->system_temp_level = val->intval;
-	pr_info("%s intval:%d system temp level:%d thermal_levels:%d",
-		__FUNCTION__,val->intval,chg->system_temp_level,chg->thermal_levels);
 
 	if (chg->system_temp_level == chg->thermal_levels)
 		return vote(chg->chg_disable_votable,
@@ -2446,9 +2417,9 @@ static void smblib_hvdcp_adaptive_voltage_change(struct smb_charger *chg)
 
 	if (chg->real_charger_type == POWER_SUPPLY_TYPE_USB_HVDCP) {
 		if (chg->qc2_unsupported) {
-				smblib_hvdcp_set_fsw(chg, QC_5V_BIT);
-				power_supply_changed(chg->usb_main_psy);
-				return;
+			smblib_hvdcp_set_fsw(chg, QC_5V_BIT);
+			power_supply_changed(chg->usb_main_psy);
+			return;
 		}
 		rc = smblib_read(chg, QC_CHANGE_STATUS_REG, &stat);
 		if (rc < 0) {
@@ -2545,7 +2516,7 @@ int smblib_dp_dm(struct smb_charger *chg, int val)
 			pr_err("Failed to force 5V\n");
 		break;
 	case POWER_SUPPLY_DP_DM_FORCE_9V:
-	/* we use our own qc2 method to raise to 9V, so just return here */
+		/* we use our own qc2 method to raise to 9V, so just return here */
 		return 0;
 		if (chg->qc2_unsupported_voltage == QC2_NON_COMPLIANT_9V) {
 			smblib_err(chg, "Couldn't set 9V: unsupported\n");
@@ -2572,7 +2543,7 @@ int smblib_dp_dm(struct smb_charger *chg, int val)
 			pr_err("Failed to force 9V\n");
 		break;
 	case POWER_SUPPLY_DP_DM_FORCE_12V:
-	/* we use our own qc2 method to raise to 9V, so just return here */
+		/* we use our own qc2 method to raise to 9V, so just return here */
 		return 0;
 		if (chg->qc2_unsupported_voltage == QC2_NON_COMPLIANT_12V) {
 			smblib_err(chg, "Couldn't set 12V: unsupported\n");
@@ -3156,11 +3127,11 @@ int smblib_get_prop_usb_voltage_max_design(struct smb_charger *chg,
 			break;
 		} else if (chg->qc2_unsupported) {
 			val->intval = MICRO_5V;
-			break;			
+			break;
 		}
 
 		val->intval = MICRO_9V;
-		break;		
+		break;
 		/* else, fallthrough */
 	case POWER_SUPPLY_TYPE_USB_HVDCP_3:
 	case POWER_SUPPLY_TYPE_USB_PD:
@@ -3869,9 +3840,8 @@ static int smblib_handle_usb_current(struct smb_charger *chg,
 {
 	int rc = 0, rp_ua;
 	union power_supply_propval val = {0, };
-
 	const struct apsd_result *apsd_now = smblib_get_apsd_result(chg);
-	pr_info("real_type %d apsd_type %d\n",chg->real_charger_type,apsd_now->pst);
+
 	if (chg->real_charger_type == POWER_SUPPLY_TYPE_USB_FLOAT) {
 		if (usb_current == -ETIMEDOUT) {
 			if ((chg->float_cfg & FLOAT_OPTIONS_MASK)
@@ -3929,12 +3899,12 @@ static int smblib_handle_usb_current(struct smb_charger *chg,
 		if (!rc && !val.intval)
 			return 0;
 
-		if((chg->real_charger_type == POWER_SUPPLY_TYPE_USB
-			|| chg->real_charger_type == POWER_SUPPLY_TYPE_USB_CDP)&&
-			usb_current ==SUSPEND_CURRENT_UA)
+		if ((chg->real_charger_type == POWER_SUPPLY_TYPE_USB
+			|| chg->real_charger_type == POWER_SUPPLY_TYPE_USB_CDP) &&
+			usb_current == SUSPEND_CURRENT_UA)
 			rc = vote(chg->usb_icl_votable, USB_PSY_VOTER,
 						true, USBIN_500MA);
-		else	
+		else
 			rc = vote(chg->usb_icl_votable, USB_PSY_VOTER,
 						true, usb_current);
 		if (rc < 0) {
@@ -5074,8 +5044,7 @@ static void smblib_handle_hvdcp_3p0_auth_done(struct smb_charger *chg,
 		if (rc < 0)
 			dev_err(chg->dev,
 			"Couldn't enable secondary chargers  rc=%d\n", rc);
-	} else if(apsd_result->bit & QC_2P0_BIT
-			&& !chg->qc2_unsupported) {
+	} else if (apsd_result->bit & QC_2P0_BIT && !chg->qc2_unsupported) {
 		pr_info("force 9V for QC2 charger\n");
 		rc = smblib_force_vbus_voltage(chg, FORCE_9V_BIT);
 		if (rc < 0)

@@ -1119,6 +1119,17 @@ static int rx_macro_mclk_event(struct snd_soc_dapm_widget *w,
 	dev_dbg(rx_dev, "%s: event = %d\n", __func__, event);
 	switch (event) {
 	case SND_SOC_DAPM_PRE_PMU:
+		/* if swr_clk_users > 0, call device down */
+		if (rx_priv->swr_clk_users > 0) {
+			if ((rx_priv->mclk_mux == MCLK_MUX0 &&
+			     rx_priv->is_native_on) ||
+			    (rx_priv->mclk_mux == MCLK_MUX1 &&
+			     !rx_priv->is_native_on)) {
+				swrm_wcd_notify(
+				rx_priv->swr_ctrl_data[0].rx_swr_pdev,
+				SWR_DEVICE_DOWN, NULL);
+			}
+		}
 		if (rx_priv->is_native_on)
 			mclk_freq = MCLK_FREQ_NATIVE;
 		swrm_wcd_notify(
@@ -1175,14 +1186,14 @@ static int rx_macro_mclk_ctrl(struct device *dev, bool enable)
 		ret = clk_prepare_enable(rx_priv->rx_core_clk);
 		if (ret < 0) {
 			dev_err_ratelimited(dev, "%s:rx mclk enable failed\n", __func__);
-			return ret;
+			goto exit;
 		}
 		ret = clk_prepare_enable(rx_priv->rx_npl_clk);
 		if (ret < 0) {
 			clk_disable_unprepare(rx_priv->rx_core_clk);
 			dev_err(dev, "%s:rx npl_clk enable failed\n",
 				__func__);
-			return ret;
+			goto exit;
 		}
 		if (rx_priv->rx_mclk_cnt++ == 0) {
 			if (rx_priv->dev_up)
@@ -1192,7 +1203,7 @@ static int rx_macro_mclk_ctrl(struct device *dev, bool enable)
 		if (rx_priv->rx_mclk_cnt <= 0) {
 			dev_dbg(dev, "%s:rx mclk already disabled\n", __func__);
 			rx_priv->rx_mclk_cnt = 0;
-			return 0;
+			goto exit;
 		}
 		if (--rx_priv->rx_mclk_cnt == 0) {
 			if (rx_priv->dev_up)
@@ -1201,9 +1212,9 @@ static int rx_macro_mclk_ctrl(struct device *dev, bool enable)
 		clk_disable_unprepare(rx_priv->rx_npl_clk);
 		clk_disable_unprepare(rx_priv->rx_core_clk);
 	}
-
+exit:
 	mutex_unlock(&rx_priv->clk_lock);
-	return 0;
+	return ret;
 }
 
 static int rx_macro_event_handler(struct snd_soc_codec *codec, u16 event,

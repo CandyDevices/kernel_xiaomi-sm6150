@@ -86,8 +86,8 @@ enum print_reason {
 
 /* defined for charger type recheck */
 #define CHARGER_RECHECK_DELAY_MS	20000
-#define TYPE_RECHECK_TIME_5S	5000
-#define TYPE_RECHECK_COUNT	3
+#define TYPE_RECHECK_TIME_5S		5000
+#define TYPE_RECHECK_COUNT			3
 
 #define VBAT_TO_VRAW_ADC(v)		div_u64((u64)v * 1000000UL, 194637UL)
 
@@ -104,8 +104,8 @@ enum print_reason {
 #define TYPEC_MEDIUM_CURRENT_UA		1500000
 #define TYPEC_HIGH_CURRENT_UA		3000000
 #define NONSTANDARD_CURRENT_UA		1000000
-#define HVDCP2_CURRENT_UA           1500000
-#define QC2_UNSUPPORTED_UA		    2000000
+#define HVDCP2_CURRENT_UA		1500000
+#define QC2_UNSUPPORTED_UA		2000000
 
 enum smb_mode {
 	PARALLEL_MASTER = 0,
@@ -533,7 +533,7 @@ struct smb_charger {
 	int                     qc2_max_pulses;
 	enum qc2_non_comp_voltage qc2_unsupported_voltage;
 	bool			dbc_usbov;
-	bool		qc2_unsupported;
+	bool			qc2_unsupported;
 
 	/* extcon for VBUS / ID notification to USB for uUSB */
 	struct extcon_dev	*extcon;
@@ -558,8 +558,6 @@ struct smb_charger {
 
 	/* wireless */
 	int			wireless_vout;
-	struct notifier_block notifier;
-	struct work_struct fb_notify_work;
 	/* charger type recheck */
 	int			recheck_charger;
 	int			precheck_charger_type;
@@ -759,12 +757,12 @@ void smblib_hvdcp_detect_enable(struct smb_charger *chg, bool enable);
 void smblib_hvdcp_exit_config(struct smb_charger *chg);
 void smblib_apsd_enable(struct smb_charger *chg, bool enable);
 int smblib_force_vbus_voltage(struct smb_charger *chg, u8 val);
-int smblib_get_irq_status(struct smb_charger *chg,
-				union power_supply_propval *val);
 int smblib_set_prop_type_recheck(struct smb_charger *chg,
 				 const union power_supply_propval *val);
 int smblib_get_prop_type_recheck(struct smb_charger *chg,
 				 union power_supply_propval *val);
+int smblib_get_irq_status(struct smb_charger *chg,
+				union power_supply_propval *val);
 
 int smblib_init(struct smb_charger *chg);
 int smblib_deinit(struct smb_charger *chg);
