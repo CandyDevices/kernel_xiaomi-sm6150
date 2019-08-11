@@ -1,4 +1,4 @@
-/* Copyright (c) 2012-2018, The Linux Foundation. All rights reserved.
+/* Copyright (c) 2012-2019, The Linux Foundation. All rights reserved.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 and
@@ -1009,6 +1009,10 @@ static void gsi_store_ringbase_dbl_info(struct usb_ep *ep,
 	 * Replace dummy doorbell address with real one as IPA connection
 	 * is setup now and GSI must be ready to handle doorbell updates.
 	 */
+	dwc3_msm_write_reg_field(mdwc->base,
+			GSI_DBL_ADDR_H(mdwc->gsi_reg[DBL_ADDR_H], (n)),
+			~0x0, 0x0);
+
 	dwc3_msm_write_reg(mdwc->base,
 		GSI_DBL_ADDR_L(mdwc->gsi_reg[DBL_ADDR_L], (n)),
 		(u32)request->mapped_db_reg_phs_addr_lsb);
@@ -1112,7 +1116,7 @@ static void gsi_endxfer_for_ep(struct usb_ep *ep)
 }
 
 /**
- * Allocates and configures TRBs for GSI EPs.
+ * Allocates Buffers and TRBs. Configures TRBs for GSI EPs.
  *
  * @usb_ep - pointer to usb_ep instance.
  * @request - pointer to GSI request.
@@ -1122,7 +1126,8 @@ static void gsi_endxfer_for_ep(struct usb_ep *ep)
 static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 {
 	int i = 0;
-	dma_addr_t buffer_addr = req->dma;
+	size_t len;
+	dma_addr_t buffer_addr;
 	struct dwc3_ep *dep = to_dwc3_ep(ep);
 	struct dwc3		*dwc = dep->dwc;
 	struct dwc3_trb *trb;
@@ -1136,6 +1141,24 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 		return -ESHUTDOWN;
 	}
 
+	/* Allocate TRB buffers */
+
+	len = req->buf_len * req->num_bufs;
+	req->buf_base_addr = dma_zalloc_coherent(dwc->sysdev, len, &req->dma,
+					GFP_KERNEL);
+	if (!req->buf_base_addr) {
+		dev_err(dwc->dev, "%s: buf_base_addr allocate failed %s\n",
+				dep->name);
+		return -ENOMEM;
+	}
+
+	dma_get_sgtable(dwc->sysdev, &req->sgt_data_buff, req->buf_base_addr,
+			req->dma, len);
+
+	buffer_addr = req->dma;
+
+	/* Allocate and configgure TRBs */
+
 	dep->trb_pool = dma_zalloc_coherent(dwc->sysdev,
 				num_trbs * sizeof(struct dwc3_trb),
 				&dep->trb_pool_dma, GFP_KERNEL);
@@ -1143,7 +1166,7 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 	if (!dep->trb_pool) {
 		dev_err(dep->dwc->dev, "failed to alloc trb dma pool for %s\n",
 				dep->name);
-		return -ENOMEM;
+		goto free_trb_buffer;
 	}
 
 	dep->num_trbs = num_trbs;
@@ -1240,10 +1263,16 @@ static int gsi_prepare_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 	}
 
 	return 0;
+
+free_trb_buffer:
+	dma_free_coherent(dwc->sysdev, len, req->buf_base_addr, req->dma);
+	req->buf_base_addr = NULL;
+	sg_free_table(&req->sgt_data_buff);
+	return -ENOMEM;
 }
 
 /**
- * Frees TRBs for GSI EPs.
+ * Frees TRBs and buffers for GSI EPs.
  *
  * @usb_ep - pointer to usb_ep instance.
  *
@@ -1266,6 +1295,12 @@ static void gsi_free_trbs(struct usb_ep *ep, struct usb_gsi_request *req)
 		dep->trb_pool_dma = 0;
 	}
 	sg_free_table(&req->sgt_trb_xfer_ring);
+
+	/* free TRB buffers */
+	dma_free_coherent(dwc->sysdev, req->buf_len * req->num_bufs,
+		req->buf_base_addr, req->dma);
+	req->buf_base_addr = NULL;
+	sg_free_table(&req->sgt_data_buff);
 }
 /**
  * Configures GSI EPs. For GSI EPs we need to set interrupter numbers.
@@ -1286,6 +1321,10 @@ static void gsi_configure_ep(struct usb_ep *ep, struct usb_gsi_request *request)
 	int ret;
 
 	/* setup dummy doorbell as IPA connection isn't setup yet */
+	dwc3_msm_write_reg_field(mdwc->base,
+			GSI_DBL_ADDR_H(mdwc->gsi_reg[DBL_ADDR_H], (n)),
+			~0x0, (u32)((u64)mdwc->dummy_gsi_db_dma >> 32));
+
 	dwc3_msm_write_reg_field(mdwc->base,
 			GSI_DBL_ADDR_L(mdwc->gsi_reg[DBL_ADDR_L], (n)),
 			~0x0, (u32)mdwc->dummy_gsi_db_dma);
@@ -2579,6 +2618,13 @@ static int dwc3_msm_resume(struct dwc3_msm *mdwc)
 	struct usb_irq *uirq;
 
 	dev_dbg(mdwc->dev, "%s: exiting lpm\n", __func__);
+
+	/*
+	 * If h/w exited LPM without any events, ensure
+	 * h/w is reset before processing any new events.
+	 */
+	if (!mdwc->vbus_active && mdwc->id_state)
+		set_bit(WAIT_FOR_LPM, &mdwc->inputs);
 
 	mutex_lock(&mdwc->suspend_resume_mutex);
 	if (!atomic_read(&dwc->in_lpm)) {

@@ -299,7 +299,7 @@ enum hdd_dot11_mode {
  * gChannelBondingMode24GHz - Configures Channel Bonding in 24 GHz
  * @Min: 0
  * @Max: 10
- * @Default: 0
+ * @Default: 1
  *
  * This ini is used to set default channel bonding mode 24GHZ
  *
@@ -612,6 +612,33 @@ enum hdd_dot11_mode {
 #define CFG_ENABLE_DFS_CHNL_SCAN_MIN               (0)
 #define CFG_ENABLE_DFS_CHNL_SCAN_MAX               (1)
 #define CFG_ENABLE_DFS_CHNL_SCAN_DEFAULT           (1)
+
+/*
+ * <ini>
+ * honour_nl_scan_policy_flags - Whether to honour NL80211 scan policy flags
+ * @Min: 0
+ * @Max: 1
+ * @Default: 1
+ *
+ * This parameter will decide whether to honour scan flags such as
+ * NL80211_SCAN_FLAG_HIGH_ACCURACY , NL80211_SCAN_FLAG_LOW_SPAN,
+ * NL80211_SCAN_FLAG_LOW_POWER.
+ * Acceptable values for this:
+ * 0: Config is disabled
+ * 1: Config is enabled
+ *
+ * Related: None
+ *
+ * Supported Feature: Scan
+ *
+ * Usage: Internal
+ *
+ * </ini>
+ */
+#define CFG_HONOUR_NL_SCAN_POLICY_FLAGS           "honour_nl_scan_policy_flags"
+#define CFG_HONOUR_NL_SCAN_POLICY_FLAGS_MIN       (0)
+#define CFG_HONOUR_NL_SCAN_POLICY_FLAGS_MAX       (1)
+#define CFG_HONOUR_NL_SCAN_POLICY_FLAGS_DEFAULT   (1)
 
 /*
  * <ini>
@@ -14456,7 +14483,7 @@ enum hdd_external_acs_policy {
  * enable_esp_for_roam - Enable/disable esp feature
  * @Min: 0
  * @Max: 1
- * @Default: 0
+ * @Default: 1
  *
  * This ini is used to enable/disable ESP(Estimated service parameters) IE
  * parsing and decides whether firmware will include this in its scoring algo.
@@ -16359,6 +16386,7 @@ struct hdd_config {
 	uint8_t enableBypass11d;
 	uint8_t enableDFSChnlScan;
 	bool wake_lock_in_user_scan;
+	bool honour_nl_scan_policy_flags;
 	uint8_t enable_dfs_pno_chnl_scan;
 	uint8_t enableDynamicDTIM;
 	uint8_t ShortGI40MhzEnable;

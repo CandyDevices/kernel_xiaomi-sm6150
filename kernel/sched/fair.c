@@ -2432,12 +2432,22 @@ no_join:
 	return;
 }
 
-void task_numa_free(struct task_struct *p)
+/*
+ * Get rid of NUMA staticstics associated with a task (either current or dead).
+ * If @final is set, the task is dead and has reached refcount zero, so we can
+ * safely free all relevant data structures. Otherwise, there might be
+ * concurrent reads from places like load balancing and procfs, and we should
+ * reset the data back to default state without freeing ->numa_faults.
+ */
+void task_numa_free(struct task_struct *p, bool final)
 {
 	struct numa_group *grp = p->numa_group;
-	void *numa_faults = p->numa_faults;
+	unsigned long *numa_faults = p->numa_faults;
 	unsigned long flags;
 	int i;
+
+	if (!numa_faults)
+		return;
 
 	if (grp) {
 		spin_lock_irqsave(&grp->lock, flags);
@@ -2451,8 +2461,14 @@ void task_numa_free(struct task_struct *p)
 		put_numa_group(grp);
 	}
 
-	p->numa_faults = NULL;
-	kfree(numa_faults);
+	if (final) {
+		p->numa_faults = NULL;
+		kfree(numa_faults);
+	} else {
+		p->total_numa_faults = 0;
+		for (i = 0; i < NR_NUMA_HINT_FAULT_STATS * nr_node_ids; i++)
+			numa_faults[i] = 0;
+	}
 }
 
 /*
@@ -4229,6 +4245,7 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 {
 	struct sched_entity *left = __pick_first_entity(cfs_rq);
 	struct sched_entity *se;
+	bool strict_skip = false;
 
 	/*
 	 * If curr is set we have to see if its left of the leftmost entity
@@ -4248,13 +4265,15 @@ pick_next_entity(struct cfs_rq *cfs_rq, struct sched_entity *curr)
 
 		if (se == curr) {
 			second = __pick_first_entity(cfs_rq);
+			if (sched_feat(STRICT_SKIP_BUDDY))
+				strict_skip = true;
 		} else {
 			second = __pick_next_entity(se);
 			if (!second || (curr && entity_before(curr, second)))
 				second = curr;
 		}
 
-		if (second && (sched_feat(STRICT_SKIP_BUDDY) ||
+		if (second && (strict_skip ||
 		    wakeup_preempt_entity(second, left) < 1))
 			se = second;
 	}
@@ -13008,13 +13027,13 @@ void check_for_migration(struct rq *rq, struct task_struct *p)
 		rcu_read_lock();
 		new_cpu = find_energy_efficient_cpu(sd, p, cpu,	prev_cpu, 0);
 		rcu_read_unlock();
-		if ((new_cpu != -1) &&
-			(capacity_orig_of(new_cpu) > capacity_orig_of(cpu))) {
+		if ((new_cpu != prev_cpu) && (capacity_orig_of(new_cpu) >
+					capacity_orig_of(prev_cpu))) {
 			active_balance = kick_active_balance(rq, p, new_cpu);
 			if (active_balance) {
 				mark_reserved(new_cpu);
 				raw_spin_unlock(&migration_lock);
-				stop_one_cpu_nowait(cpu,
+				stop_one_cpu_nowait(prev_cpu,
 					active_load_balance_cpu_stop, rq,
 					&rq->active_balance_work);
 				return;
