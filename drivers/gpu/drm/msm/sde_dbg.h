@@ -418,8 +418,7 @@ static inline void sde_dbg_destroy(void)
 {
 }
 
-static inline void sde_dbg_dump(enum sde_dbg_dump_context,
-	const char *name, ...)
+static inline void sde_dbg_dump(bool queue_work, const char *name, ...)
 {
 }
 
